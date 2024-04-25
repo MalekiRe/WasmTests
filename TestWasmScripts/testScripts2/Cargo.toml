@@ -14,3 +14,7 @@ syn = "2.0.28"
 
 [dependencies]
 memoffset.workspace = true
+bevy_app.workspace = true
+bevy_ecs.workspace = true
+bevy_derive.workspace = true
+bevy_transform.workspace = true

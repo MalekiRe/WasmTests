@@ -1,5 +1,11 @@
 #![feature(raw_ref_op)]
 
+use bevy_app::{App, Startup};
+use bevy_ecs::prelude::Component;
+use bevy_ecs::world::World;
+use bevy_ecs::system::Commands;
+use bevy_transform::prelude::Transform;
+
 #[link(wasm_import_module = "BraneEngine")]
 extern "C" {
     pub fn extern_be_print(msg: *const u8, size: u32);
@@ -23,6 +29,28 @@ pub struct TestComponent {
 pub extern "C" fn test_function(ret: i32) -> i32 {
     be_print(format!("Test function passed {}", ret).as_str());
     ret
+}
+
+#[no_mangle]
+pub extern "C" fn create_world() -> *mut World {
+    let mut app = App::new();
+    println!("a");
+    app.add_systems(Startup, spawn_thing);
+    println!("b");
+    app.update();
+    println!("c");
+    app.update();
+    println!("d");
+    let app: &'static mut App = Box::leak(Box::new(app));
+    println!("e");
+    app.world_mut() as *mut World
+}
+
+
+
+fn spawn_thing(mut commands: Commands) {
+    let e = commands.spawn(Transform::from_xyz(69420.0, 1.0, 1.0)).id();
+    println!("entity is: {}", e.index());
 }
 
 #[no_mangle]

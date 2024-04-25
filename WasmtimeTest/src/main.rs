@@ -57,6 +57,7 @@ struct BEStateInner {
 }
 
 fn be_print_external(caller: Caller<BEState>, text_ptr: u32, size: u32) {
+    println!("entered print external");
     let text_ptr = WasmSlice::<u8>::new(text_ptr, size);
     let memory = &caller.data().be_state.memory;
     let text = text_ptr.as_shared_ref(memory);
@@ -64,12 +65,13 @@ fn be_print_external(caller: Caller<BEState>, text_ptr: u32, size: u32) {
 }
 
 fn main() {
-    let use_wasi = false;
+    let use_wasi = true;
 
     let mut engine_config = Config::new();
     engine_config.wasm_threads(true);
     engine_config.wasm_bulk_memory(true);
     engine_config.debug_info(true);
+
 
     let engine = Engine::new(&engine_config).unwrap();
     let main_memory = SharedMemory::new(&engine, MemoryType::shared(50, 32768)).unwrap();
@@ -112,7 +114,6 @@ fn main() {
             s.wasi_ctx.as_mut().expect("no wasi context")
         }).expect("Could not add WASI to linker2");
     }
-
 
     {
         println!("-----Module 1-----");
@@ -186,6 +187,7 @@ fn main() {
 
     let test_function = linker1.get(&mut store1, "module1", "test_function").unwrap().into_func().unwrap().typed::<i32, i32, >(&store1).unwrap();
     let create_test_component = linker1.get(&mut store1, "module1", "create_test_component").unwrap().into_func().unwrap().typed::<(), u32, >(&store1).unwrap();
+    let create_world = linker1.get(&mut store1, "module1", "create_world").unwrap().into_func().unwrap().typed::<(), u32, >(&store1).unwrap();
 
     let res = test_function.call(&mut store1, 42).unwrap();
     println!("Test function returned {}", res);
@@ -208,6 +210,18 @@ fn main() {
         }
     }
 
+    let test_world_ref;
+
+    match create_world.call(&mut store1, ()) {
+        Ok(res) => {
+            test_world_ref = res;
+        }
+        Err(err) => {
+            eprintln!("create world failed: {}", err.to_string());
+            return;
+        }
+    }
+
     let test_component_access = linker2.get(&mut store2, "module2", "test_component_access").expect("could not find test_component_access").into_func().unwrap().typed::<u32, u32>(&store2).unwrap();
     let res = test_component_access.call(&mut store2, test_component_ref.ptr).unwrap();
 
@@ -216,4 +230,10 @@ fn main() {
     unsafe {
         println!("Test component values: a = {}, b = {}, c = {}", (*test_component).a, (*test_component).b, (*test_component).c);
     }
+
+
+    let test_world_access = linker2.get(&mut store2, "module2", "test_world_access").expect("could not find test_world_access").into_func().unwrap().typed::<u32, i32>(&store2).unwrap();
+
+    let res = test_world_access.call(&mut store2, test_world_ref).unwrap();
+    println!("res was: {}", res);
 }

@@ -1,4 +1,12 @@
 #![feature(raw_ref_op)]
+
+
+use bevy_ecs::component::Component;
+use bevy_ecs::prelude::{Entity, Query};
+use bevy_ecs::system::RunSystemOnce;
+use bevy_ecs::world::World;
+use bevy_transform::prelude::Transform;
+
 #[derive(Clone)]
 #[repr(C)]
 pub struct TestComponent {
@@ -6,6 +14,17 @@ pub struct TestComponent {
     pub b: i32,
     pub c: f32
 }
+
+// #[link(wasm_import_module = "BraneEngine")]
+// extern "C" {
+//     pub fn extern_be_print(msg: *const u8, size: u32);
+// }
+//
+// pub fn be_print(msg: &str) {
+//     unsafe {
+//         extern_be_print(msg.as_ptr(), msg.len() as u32);
+//     }
+// }
 
 #[no_mangle]
 pub extern "C" fn test_component_access(mut component: Box<TestComponent>) -> Box<TestComponent> {
@@ -15,6 +34,28 @@ pub extern "C" fn test_component_access(mut component: Box<TestComponent>) -> Bo
         c: 3.14
     };
     component
+}
+
+#[no_mangle]
+pub extern "C" fn test_world_access(mut world: *mut World) -> i32 {
+
+    let mut val = 0;
+    let e = match unsafe { (*world).get::<Transform>(Entity::from_raw(0)) } {
+        None => return 1,
+        Some(e) => e,
+    };
+    val = e.translation.x as i32;
+
+   /* unsafe { (*world).run_system_once(|query: Query<&MyComponent>| {
+        for transform in query.iter() {
+            *ptr = transform.value;
+        }
+    }) }*/
+
+    println!("This will trigger the bug");
+    //REMOVE the line above to see the non-buggy behavior.
+
+    val
 }
 
 
