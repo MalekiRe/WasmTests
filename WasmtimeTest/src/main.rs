@@ -185,55 +185,9 @@ fn main() {
     }
     println!("-----end-----");
 
-    let test_function = linker1.get(&mut store1, "module1", "test_function").unwrap().into_func().unwrap().typed::<i32, i32, >(&store1).unwrap();
-    let create_test_component = linker1.get(&mut store1, "module1", "create_test_component").unwrap().into_func().unwrap().typed::<(), u32, >(&store1).unwrap();
-    let create_world = linker1.get(&mut store1, "module1", "create_world").unwrap().into_func().unwrap().typed::<(), u32, >(&store1).unwrap();
-
-    let res = test_function.call(&mut store1, 42).unwrap();
-    println!("Test function returned {}", res);
-
-    let test_component_ref;
-
-    match create_test_component.call(&mut store1, ()) {
-        Ok(res) => {
-            test_component_ref = WasmPtr::<TestComponent>::new(res);
-            println!("Create test component returned {}", res);
 
 
-            let test_component = test_component_ref.as_shared_ref(&main_memory);
-            println!("Test component values: a = {}, b = {}, c = {}", (*test_component).a, (*test_component).b, (*test_component).c);
+    let test_world_access = linker2.get(&mut store2, "module2", "test_function").expect("could not find test_function").into_func().unwrap().typed::<(), ()>(&store2).unwrap();
 
-        },
-        Err(err) => {
-            eprintln!("create_test_component failed: {}", err.to_string());
-            return;
-        }
-    }
-
-    let test_world_ref;
-
-    match create_world.call(&mut store1, ()) {
-        Ok(res) => {
-            test_world_ref = res;
-        }
-        Err(err) => {
-            eprintln!("create world failed: {}", err.to_string());
-            return;
-        }
-    }
-
-    let test_component_access = linker2.get(&mut store2, "module2", "test_component_access").expect("could not find test_component_access").into_func().unwrap().typed::<u32, u32>(&store2).unwrap();
-    let res = test_component_access.call(&mut store2, test_component_ref.ptr).unwrap();
-
-    println!("Test component access returned {}", res);
-    let test_component = test_component_ref.as_shared_ref(&main_memory);
-    unsafe {
-        println!("Test component values: a = {}, b = {}, c = {}", (*test_component).a, (*test_component).b, (*test_component).c);
-    }
-
-
-    let test_world_access = linker2.get(&mut store2, "module2", "test_world_access").expect("could not find test_world_access").into_func().unwrap().typed::<u32, i32>(&store2).unwrap();
-
-    let res = test_world_access.call(&mut store2, test_world_ref).unwrap();
-    println!("res was: {}", res);
+    test_world_access.call(&mut store2, ()).unwrap();
 }
