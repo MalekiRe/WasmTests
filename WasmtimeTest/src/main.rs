@@ -48,7 +48,7 @@ fn load_module(path: &str, engine: &Engine) -> Result<Module, String> {
 #[derive(Clone)]
 struct BEState {
     be_state: Arc<BEStateInner>,
-    wasi_ctx: Option<WasiCtx>
+    //wasi_ctx: Option<WasiCtx>
 }
 
 struct BEStateInner {
@@ -65,7 +65,7 @@ fn be_print_external(caller: Caller<BEState>, text_ptr: u32, size: u32) {
 }
 
 fn main() {
-    let use_wasi = true;
+    let use_wasi = false;
 
     let mut engine_config = Config::new();
     engine_config.wasm_threads(true);
@@ -87,7 +87,7 @@ fn main() {
             engine: engine.clone(),
             memory: main_memory.clone()
         }),
-        wasi_ctx
+        //wasi_ctx
     };
 
     let mut store1 = Store::new(&engine, data.clone());
@@ -107,12 +107,12 @@ fn main() {
     linker2.func_wrap("BraneEngine", "extern_be_print", be_print_external).unwrap();
 
     if use_wasi {
-        wasmtime_wasi::add_to_linker(&mut linker1, |s: &mut BEState| {
+       /* wasmtime_wasi::add_to_linker(&mut linker1, |s: &mut BEState| {
             s.wasi_ctx.as_mut().expect("no wasi context")
         }).expect("Could not add WASI to linker1");
         wasmtime_wasi::add_to_linker(&mut linker2, |s: &mut BEState| {
             s.wasi_ctx.as_mut().expect("no wasi context")
-        }).expect("Could not add WASI to linker2");
+        }).expect("Could not add WASI to linker2");*/
     }
 
     {

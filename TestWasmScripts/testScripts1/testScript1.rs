@@ -1,4 +1,4 @@
-#![feature(raw_ref_op)]
+static SPACER: [i64; 1000] = [0; 1000];
 
 #[no_mangle]
 pub extern "C" fn test_function2() {
