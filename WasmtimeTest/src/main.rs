@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use wasmtime::{Config, Engine, SharedMemory, Store, Module, MemoryType, Linker, Caller};
+use wasmtime::{Config, Engine, SharedMemory, Store, Module, MemoryType, Linker, Caller, Global, GlobalType, ValType, Mutability};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 mod api_bindings;
@@ -91,28 +91,30 @@ fn main() {
     };
 
     let mut store1 = Store::new(&engine, data.clone());
-    let mut store2 = Store::new(&engine, data.clone());
+    //let mut store2 = Store::new(&engine, data.clone());
 
     // Load two different modules importing the same shared memory
-    let module1 = load_module("wasm_crate1.wasm", &engine).unwrap();
+    let mut module1 = load_module("wasm_crate1.wasm", &engine).unwrap();
     let module2 = load_module("wasm_crate2.wasm", &engine).unwrap();
 
 
     let mut linker1 = Linker::new(&engine);
     linker1.define(&mut store1, "env", "memory", main_memory.clone()).expect("Could not define memory for store1");
+
+
     linker1.func_wrap("BraneEngine", "extern_be_print", be_print_external).unwrap();
 
-    let mut linker2  = Linker::new(&engine);
+    /*let mut linker2  = Linker::new(&engine);
     linker2.define(&mut store2, "env", "memory", main_memory.clone()).expect("Could not define memory for store2");
-    linker2.func_wrap("BraneEngine", "extern_be_print", be_print_external).unwrap();
+    linker2.func_wrap("BraneEngine", "extern_be_print", be_print_external).unwrap();*/
 
     if use_wasi {
         wasmtime_wasi::add_to_linker(&mut linker1, |s: &mut BEState| {
             s.wasi_ctx.as_mut().expect("no wasi context")
         }).expect("Could not add WASI to linker1");
-        wasmtime_wasi::add_to_linker(&mut linker2, |s: &mut BEState| {
+       /* wasmtime_wasi::add_to_linker(&mut linker2, |s: &mut BEState| {
             s.wasi_ctx.as_mut().expect("no wasi context")
-        }).expect("Could not add WASI to linker2");
+        }).expect("Could not add WASI to linker2");*/
     }
 
     {
@@ -140,16 +142,24 @@ fn main() {
 
         println!("-----Module 1, store 2-----");
         let now = std::time::Instant::now();
-        let instance2 = linker2.module(&mut store2, "module1", &module1);
+        /*let instance2 = linker2.module(&mut store2, "module1", &module1);
         if instance2.is_err() {
             println!("Was unable to instantiate module1: {:?}", instance2.err().unwrap());
             return;
-        }
+        }*/
         let instanceInstantiationTime = now.elapsed();
         println!("Instance2 instantiation time: {:?}", instanceInstantiationTime);
     }
 
+    let ty = GlobalType::new(ValType::I32, Mutability::Var);
+    let i32_const = Global::new(&mut store1, ty, /*0x100500.into()*/5000.into()).unwrap();
+    //linker1.define(&store1, "", "GOT.data.internal.__memory_base", i32_const).unwrap();
+    /*let global = linker1.get(&mut store1, "env", "__memory_base").unwrap();
+    let g = global.into_global().unwrap();
+    println!("global: {:#?}", g);*/
 
+
+    //linker1.define(&store1, "", "GOT.data.internal.__memory_base", i32_const).unwrap();
 
 
     println!("-----Module 2-----");
@@ -164,12 +174,12 @@ fn main() {
         let instanceInstantiationTime = now.elapsed();
         println!("Instance2 instantiation time: {:?}", instanceInstantiationTime);
 
-        let instance2 = linker2.module(&mut store2, "module2", &module2);
+        /*let instance2 = linker2.module(&mut store2, "module2", &module2);
         if instance2.is_err() {
             println!("Was unable to instantiate module2: {:?}", instance2.err().unwrap());
             return;
         }
-        instance2.expect("Couldn't instantiate module2");
+        instance2.expect("Couldn't instantiate module2");*/
 
         println!("Imports");
         let imports = module2.imports();
@@ -222,18 +232,18 @@ fn main() {
         }
     }
 
-    let test_component_access = linker2.get(&mut store2, "module2", "test_component_access").expect("could not find test_component_access").into_func().unwrap().typed::<u32, u32>(&store2).unwrap();
+    /*let test_component_access = linker2.get(&mut store2, "module2", "test_component_access").expect("could not find test_component_access").into_func().unwrap().typed::<u32, u32>(&store2).unwrap();
     let res = test_component_access.call(&mut store2, test_component_ref.ptr).unwrap();
 
     println!("Test component access returned {}", res);
     let test_component = test_component_ref.as_shared_ref(&main_memory);
     unsafe {
         println!("Test component values: a = {}, b = {}, c = {}", (*test_component).a, (*test_component).b, (*test_component).c);
-    }
+    }*/
 
 
-    let test_world_access = linker2.get(&mut store2, "module2", "test_world_access").expect("could not find test_world_access").into_func().unwrap().typed::<u32, i32>(&store2).unwrap();
+    let test_world_access = linker1.get(&mut store1, "module2", "test_world_access").expect("could not find test_world_access").into_func().unwrap().typed::<u32, i32>(&store1).unwrap();
 
-    let res = test_world_access.call(&mut store2, test_world_ref).unwrap();
+    let res = test_world_access.call(&mut store1, test_world_ref).unwrap();
     println!("res was: {}", res);
 }

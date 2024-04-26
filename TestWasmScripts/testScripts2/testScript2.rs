@@ -1,6 +1,8 @@
 #![feature(raw_ref_op)]
 
 
+use std::collections::HashMap;
+use std::ptr::addr_of;
 use bevy_ecs::component::Component;
 use bevy_ecs::prelude::{Entity, Query};
 use bevy_ecs::system::RunSystemOnce;
@@ -15,17 +17,17 @@ pub struct TestComponent {
     pub c: f32
 }
 
-// #[link(wasm_import_module = "BraneEngine")]
-// extern "C" {
-//     pub fn extern_be_print(msg: *const u8, size: u32);
-// }
-//
-// pub fn be_print(msg: &str) {
-//     unsafe {
-//         extern_be_print(msg.as_ptr(), msg.len() as u32);
-//     }
-// }
+/*#[link(wasm_import_module = "BraneEngine")]
+extern "C" {
+    pub fn extern_be_print(msg: *const u8, size: u32);
+}
 
+pub fn be_print(msg: &str) {
+    unsafe {
+        extern_be_print(msg.as_ptr(), msg.len() as u32);
+    }
+}
+*/
 #[no_mangle]
 pub extern "C" fn test_component_access(mut component: Box<TestComponent>) -> Box<TestComponent> {
     *component = TestComponent {
@@ -40,19 +42,30 @@ pub extern "C" fn test_component_access(mut component: Box<TestComponent>) -> Bo
 pub extern "C" fn test_world_access(mut world: *mut World) -> i32 {
 
     let mut val = 0;
-    let e = match unsafe { (*world).get::<Transform>(Entity::from_raw(0)) } {
+    /*let e = match unsafe { (*world).get::<Transform>(Entity::from_raw(0)) } {
         None => return 1,
         Some(e) => e,
     };
-    val = e.translation.x as i32;
+    val = e.translation.x as i32;*/
 
-   /* unsafe { (*world).run_system_once(|query: Query<&MyComponent>| {
+    let mut ptr = (&mut val as *mut i32);
+    let mut ptr = unsafe { (&mut *ptr) };
+
+    println!("owo");
+
+    if (world.is_null()) {
+        println!("was null");
+        return 1;
+    }
+    println!("uwu");
+
+    unsafe { (*world).run_system_once(|query: Query<&Transform>| {
         for transform in query.iter() {
-            *ptr = transform.value;
+            *ptr = transform.translation.x as i32;
         }
-    }) }*/
+    }) }
 
-    println!("This will trigger the bug");
+
     //REMOVE the line above to see the non-buggy behavior.
 
     val
