@@ -3,8 +3,9 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use wasmtime::{Config, Engine, SharedMemory, Store, Module, MemoryType, Linker, Caller};
-use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
+use wasi_common::sync::WasiCtxBuilder;
+use wasi_common::WasiCtx;
+use wasmtime::{Config, Engine, SharedMemory, Store, Module, MemoryType, Linker, Caller, WasmBacktraceDetails};
 
 mod api_bindings;
 use api_bindings::{WasmPtr, WasmSlice, ComponentInfo};
@@ -45,7 +46,6 @@ fn load_module(path: &str, engine: &Engine) -> Result<Module, String> {
     Ok(module)
 }
 
-#[derive(Clone)]
 struct BEState {
     be_state: Arc<BEStateInner>,
     wasi_ctx: Option<WasiCtx>
@@ -71,6 +71,7 @@ fn main() {
     engine_config.wasm_threads(true);
     engine_config.wasm_bulk_memory(true);
     engine_config.debug_info(true);
+    engine_config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
 
 
     let engine = Engine::new(&engine_config).unwrap();
@@ -82,16 +83,27 @@ fn main() {
         None
     };
 
-    let data = BEState{
+    let data1 = BEState{
         be_state: Arc::new(BEStateInner {
             engine: engine.clone(),
             memory: main_memory.clone()
         }),
         wasi_ctx
     };
-
-    let mut store1 = Store::new(&engine, data.clone());
-    let mut store2 = Store::new(&engine, data.clone());
+    let wasi_ctx = if use_wasi {
+        Some(WasiCtxBuilder::new().inherit_stdio().build())
+    } else {
+        None
+    };
+    let data2 = BEState{
+        be_state: Arc::new(BEStateInner {
+            engine: engine.clone(),
+            memory: main_memory.clone()
+        }),
+        wasi_ctx
+    };
+    let mut store1 = Store::new(&engine, data1);
+    let mut store2 = Store::new(&engine, data2);
 
     // Load two different modules importing the same shared memory
     let module1 = load_module("wasm_crate1.wasm", &engine).unwrap();
@@ -107,10 +119,10 @@ fn main() {
     linker2.func_wrap("BraneEngine", "extern_be_print", be_print_external).unwrap();
 
     if use_wasi {
-        wasmtime_wasi::add_to_linker(&mut linker1, |s: &mut BEState| {
+        wasi_common::sync::add_to_linker(&mut linker1, |s: &mut BEState| {
             s.wasi_ctx.as_mut().expect("no wasi context")
         }).expect("Could not add WASI to linker1");
-        wasmtime_wasi::add_to_linker(&mut linker2, |s: &mut BEState| {
+        wasi_common::sync::add_to_linker(&mut linker2, |s: &mut BEState| {
             s.wasi_ctx.as_mut().expect("no wasi context")
         }).expect("Could not add WASI to linker2");
     }
@@ -185,36 +197,19 @@ fn main() {
     }
     println!("-----end-----");
 
-    let test_function = linker1.get(&mut store1, "module1", "test_function").unwrap().into_func().unwrap().typed::<i32, i32, >(&store1).unwrap();
-    let create_test_component = linker1.get(&mut store1, "module1", "create_test_component").unwrap().into_func().unwrap().typed::<(), u32, >(&store1).unwrap();
     let create_world = linker1.get(&mut store1, "module1", "create_world").unwrap().into_func().unwrap().typed::<(), u32, >(&store1).unwrap();
-
-    let res = test_function.call(&mut store1, 42).unwrap();
-    println!("Test function returned {}", res);
-
-    let test_component_ref;
-
-    match create_test_component.call(&mut store1, ()) {
-        Ok(res) => {
-            test_component_ref = WasmPtr::<TestComponent>::new(res);
-            println!("Create test component returned {}", res);
+    let create_app = linker1.get(&mut store1, "module1", "create_app").unwrap().into_func().unwrap().typed::<(), u32, >(&store1).unwrap();
+    let tick_app = linker1.get(&mut store1, "module1", "tick_app").unwrap().into_func().unwrap().typed::<u32, u32>(&store1).unwrap();
 
 
-            let test_component = test_component_ref.as_shared_ref(&main_memory);
-            println!("Test component values: a = {}, b = {}, c = {}", (*test_component).a, (*test_component).b, (*test_component).c);
 
-        },
-        Err(err) => {
-            eprintln!("create_test_component failed: {}", err.to_string());
-            return;
-        }
-    }
+    let app1 = create_app.call(&mut store1, ()).unwrap();
 
-    let test_world_ref;
+    let mut world_ptr;
 
     match create_world.call(&mut store1, ()) {
-        Ok(res) => {
-            test_world_ref = res;
+        Ok(res2) => {
+            world_ptr = res2;
         }
         Err(err) => {
             eprintln!("create world failed: {}", err.to_string());
@@ -222,18 +217,14 @@ fn main() {
         }
     }
 
-    let test_component_access = linker2.get(&mut store2, "module2", "test_component_access").expect("could not find test_component_access").into_func().unwrap().typed::<u32, u32>(&store2).unwrap();
-    let res = test_component_access.call(&mut store2, test_component_ref.ptr).unwrap();
+    let test_world_access = linker2.get(&mut store2, "module2", "test_world_access").expect("could not find test_world_access").into_func().unwrap().typed::<u32, u32>(&store2).unwrap();
+    let module_2_tick = linker2.get(&mut store2, "module2", "tick").unwrap().into_func().unwrap().typed::<u32, ()>(&store2).unwrap();
 
-    println!("Test component access returned {}", res);
-    let test_component = test_component_ref.as_shared_ref(&main_memory);
-    unsafe {
-        println!("Test component values: a = {}, b = {}, c = {}", (*test_component).a, (*test_component).b, (*test_component).c);
+    let mut app2 = test_world_access.call(&mut store2, world_ptr).unwrap();
+
+    for _ in 0..5 {
+        tick_app.call(&mut store1, app1).unwrap();
+        module_2_tick.call(&mut store2, app2).unwrap();
     }
 
-
-    let test_world_access = linker2.get(&mut store2, "module2", "test_world_access").expect("could not find test_world_access").into_func().unwrap().typed::<u32, i32>(&store2).unwrap();
-
-    let res = test_world_access.call(&mut store2, test_world_ref).unwrap();
-    println!("res was: {}", res);
 }

@@ -1,8 +1,11 @@
 #![feature(raw_ref_op)]
 
 
-use bevy_ecs::component::Component;
-use bevy_ecs::prelude::{Entity, Query};
+use std::time::Duration;
+use bevy_app::{App, AppExit, FixedMain, FixedMainScheduleOrder, Main, MainScheduleOrder, MainSchedulePlugin, RunFixedMainLoop, SubApp, Update};
+use bevy_derive::AppLabel;
+use bevy_ecs::prelude::{AppTypeRegistry, FromWorld, Query, Schedule, Schedules};
+use bevy_ecs::schedule::{ExecutorKind, ScheduleLabel};
 use bevy_ecs::system::RunSystemOnce;
 use bevy_ecs::world::World;
 use bevy_transform::prelude::Transform;
@@ -37,26 +40,32 @@ pub extern "C" fn test_component_access(mut component: Box<TestComponent>) -> Bo
 }
 
 #[no_mangle]
-pub extern "C" fn test_world_access(mut world: *mut World) -> i32 {
+pub extern "C" fn test_world_access(mut world: Box<World>) -> *mut App {
+    //world.insert_resource(Schedules::default());
+    let mut app2 = App::new();
+    app2.insert_sub_app(MyApp, SubApp::new());
+    *app2.world_mut() = *world;
 
-    let mut val = 0;
-    let e = match unsafe { (*world).get::<Transform>(Entity::from_raw(0)) } {
-        None => return 1,
-        Some(e) => e,
-    };
-    val = e.translation.x as i32;
-
-   /* unsafe { (*world).run_system_once(|query: Query<&MyComponent>| {
-        for transform in query.iter() {
-            *ptr = transform.value;
-        }
-    }) }*/
-
-    println!("This will trigger the bug");
-    //REMOVE the line above to see the non-buggy behavior.
-
-    val
+    Box::leak(Box::new(app2))
 }
+
+
+#[derive(AppLabel, Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct MyApp;
+
+#[no_mangle]
+pub extern "C" fn tick(mut app: *mut App) {
+    //app.sub_app(MyApp);
+    unsafe { (&mut *app).world_mut() } .run_system_once(print_transform);
+}
+
+fn print_transform(query: Query<&Transform>) {
+    for transform in query.iter() {
+        println!("{:#?}", transform);
+    }
+}
+
+
 
 
 

@@ -1,8 +1,11 @@
 #![feature(raw_ref_op)]
 
-use bevy_app::{App, Startup};
-use bevy_ecs::prelude::Component;
-use bevy_ecs::world::World;
+use std::time::Duration;
+use bevy_app::{App, AppExit, FixedMain, FixedMainScheduleOrder, Main, MainScheduleOrder, MainSchedulePlugin, RunFixedMainLoop, ScheduleRunnerPlugin, Startup, Update};
+use bevy_ecs::intern::Interned;
+use bevy_ecs::prelude::{AppTypeRegistry, Component, Query, Schedule, Schedules};
+use bevy_ecs::schedule::{ExecutorKind, ScheduleLabel};
+use bevy_ecs::world::{FromWorld, World};
 use bevy_ecs::system::Commands;
 use bevy_transform::prelude::Transform;
 
@@ -32,25 +35,50 @@ pub extern "C" fn test_function(ret: i32) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn create_world() -> *mut World {
+pub extern "C" fn create_app() -> *mut App {
+    //world.insert_resource(Schedules::default());
     let mut app = App::new();
-    println!("a");
+    app.add_plugins(bevy_app::ScheduleRunnerPlugin::run_loop(Duration::from_secs(1)));
     app.add_systems(Startup, spawn_thing);
-    println!("b");
-    app.update();
-    println!("c");
-    app.update();
-    println!("d");
-    let app: &'static mut App = Box::leak(Box::new(app));
-    println!("e");
-    app.world_mut() as *mut World
+    app.add_systems(Update, change_transform);
+    app.add_systems(Update, system_print2);
+    Box::leak(Box::new(app))
 }
 
+static mut APP: Option<&'static mut App> = None;
 
+#[no_mangle]
+pub extern "C" fn create_world() -> *mut World {
+    unsafe { std::mem::transmute(APP.as_mut().unwrap().world_mut()) }
+}
+
+#[no_mangle]
+pub extern "C" fn get_update() -> *mut Interned<dyn ScheduleLabel> {
+    Box::leak(Box::new(Update.intern()))
+}
+
+fn change_transform(mut query: Query<&mut Transform>) {
+    for mut transform in query.iter_mut() {
+        transform.translation.x += 1.0;
+    }
+}
 
 fn spawn_thing(mut commands: Commands) {
     let e = commands.spawn(Transform::from_xyz(69420.0, 1.0, 1.0)).id();
     println!("entity is: {}", e.index());
+}
+
+#[no_mangle]
+pub extern "C" fn tick_app(app: *mut App) -> *mut App {
+    let app = unsafe {&mut *app};
+
+    app.update();
+
+    app
+}
+
+fn system_print2() {
+    println!("owo");
 }
 
 #[no_mangle]

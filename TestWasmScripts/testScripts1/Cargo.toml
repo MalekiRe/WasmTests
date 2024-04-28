@@ -12,6 +12,9 @@ crate-type = ["cdylib"]
 proc-macro2.workspace = true
 syn.workspace = true
 
+[profile.release]
+debug = true
+
 [dependencies]
 memoffset.workspace = true
 bevy_app.workspace = true
